@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF 解析工具</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+  .container { width: 100%; max-width: 780px; }
+  .card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 32px;
+    margin-bottom: 24px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 24px; color: #1a1a1a; }
+  .upload-area {
+    border: 2px dashed #d9d9d9;
+    border-radius: 8px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .upload-area:hover, .upload-area.dragover { border-color: #1890ff; background: #e6f7ff; }
+  .upload-area .icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-area .hint { color: #999; font-size: 14px; }
+  .upload-area .hint strong { color: #1890ff; }
+  #fileInput { display: none; }
+  .file-info {
+    display: none;
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: #fafafa;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  .file-info .name { color: #333; word-break: break-all; }
+  .file-info .size { color: #999; margin-left: 12px; }
+  .controls { margin-top: 16px; display: flex; gap: 12px; align-items: center; }
+  .model-select {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 14px;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .btn {
+    padding: 10px 24px;
+    font-size: 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+  }
+  .btn-primary { background: #1890ff; color: #fff; }
+  .btn-primary:hover { background: #40a9ff; }
+  .btn-primary:disabled { background: #91caff; cursor: not-allowed; }
+  .spinner {
+    display: none;
+    text-align: center;
+    margin-top: 16px;
+    color: #999;
+    font-size: 14px;
+  }
+  .spinner::before {
+    content: "";
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #d9d9d9;
+    border-top-color: #1890ff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 8px;
+    vertical-align: -2px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-bar-wrap {
+    display: none;
+    margin-top: 12px;
+    height: 6px;
+    background: #f0f0f0;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-bar-inner {
+    height: 100%;
+    background: #1890ff;
+    border-radius: 3px;
+    transition: width 0.3s;
+    width: 0;
+  }
+  .error-msg {
+    display: none;
+    margin-top: 16px;
+    padding: 10px 16px;
+    background: #fff2f0;
+    border: 1px solid #ffccc7;
+    border-radius: 4px;
+    color: #ff4d4f;
+    font-size: 14px;
+  }
+  .results { display: none; }
+  .results h2 {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    color: #1a1a1a;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th { text-align: left; padding: 8px 12px; background: #fafafa; border-bottom: 1px solid #f0f0f0; color: #666; font-weight: 500; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+  .download-btn {
+    color: #1890ff;
+    text-decoration: none;
+    cursor: pointer;
+    font-size: 13px;
+    margin-right: 12px;
+  }
+  .download-btn:hover { color: #40a9ff; text-decoration: underline; }
+  .file-size { color: #999; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <h1>PDF 解析工具</h1>
+
+    <div class="upload-area" id="uploadArea">
+      <div class="icon">📄</div>
+      <p class="hint">点击或拖拽 <strong>PDF 文件</strong> 到此处</p>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf">
+
+    <div class="file-info" id="fileInfo">
+      <span class="name" id="fileName"></span>
+      <span class="size" id="fileSize"></span>
+    </div>
+
+    <div class="controls">
+      <select class="model-select" id="modelSelect">
+        <option value="PP-OCRv5">PP-OCRv5 — 文本识别</option>
+        <option value="PP-StructureV3">PP-StructureV3 — 结构解析</option>
+      </select>
+      <button class="btn btn-primary" id="ocrBtn" disabled>解析 PDF</button>
+    </div>
+
+    <div class="spinner" id="spinner">正在解析中，请耐心等待...</div>
+    <div class="progress-bar-wrap" id="progressWrap">
+      <div class="progress-bar-inner" id="progressBar"></div>
+    </div>
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <div class="card results" id="resultsCard">
+    <h2>解析结果 — <span id="resultCount"></span> 页</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px">页码</th>
+          <th>PDF</th>
+          <th>JSON</th>
+          <th style="width:80px">JSON 大小</th>
+          <th style="width:140px">操作</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function() {
+  const API_BASE = 'http://localhost:8080/api/pdf';
+
+  const $ = s => document.querySelector(s);
+
+  const uploadArea = $('#uploadArea');
+  const fileInput = $('#fileInput');
+  const fileInfo = $('#fileInfo');
+  const fileNameEl = $('#fileName');
+  const fileSizeEl = $('#fileSize');
+  const modelSelect = $('#modelSelect');
+  const ocrBtn = $('#ocrBtn');
+  const spinner = $('#spinner');
+  const progressWrap = $('#progressWrap');
+  const progressBar = $('#progressBar');
+  const errorMsg = $('#errorMsg');
+  const resultsCard = $('#resultsCard');
+  const resultCount = $('#resultCount');
+  const resultsBody = $('#resultsBody');
+
+  let selectedFile = null;
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  function selectFile(file) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      showError('只支持 PDF 文件');
+      return;
+    }
+    selectedFile = file;
+    fileNameEl.textContent = file.name;
+    fileSizeEl.textContent = formatSize(file.size);
+    fileInfo.style.display = 'block';
+    ocrBtn.disabled = false;
+    hideError();
+    resultsCard.style.display = 'none';
+  }
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.style.display = 'block';
+  }
+
+  function hideError() {
+    errorMsg.style.display = 'none';
+  }
+
+  uploadArea.addEventListener('click', () => fileInput.click());
+
+  uploadArea.addEventListener('dragover', e => {
+    e.preventDefault();
+    uploadArea.classList.add('dragover');
+  });
+
+  uploadArea.addEventListener('dragleave', () => {
+    uploadArea.classList.remove('dragover');
+  });
+
+  uploadArea.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) selectFile(file);
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (file) selectFile(file);
+  });
+
+  ocrBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    ocrBtn.disabled = true;
+    spinner.style.display = 'block';
+    progressWrap.style.display = 'block';
+    progressBar.style.width = '0%';
+    hideError();
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      const model = modelSelect.value;
+      const url = API_BASE + '/ocr?model=' + encodeURIComponent(model);
+
+      // Simulate progress since the backend processes sequentially
+      const progressInterval = setInterval(() => {
+        const w = parseFloat(progressBar.style.width) || 0;
+        if (w < 90) {
+          progressBar.style.width = Math.min(w + 2, 90) + '%';
+        }
+      }, 1000);
+
+      const res = await fetch(url, {
+        method: 'POST',
+        body: formData
+      });
+
+      clearInterval(progressInterval);
+      progressBar.style.width = '100%';
+
+      const json = await res.json();
+
+      if (json.code !== 200) {
+        showError(json.message || '解析失败');
+        return;
+      }
+
+      const pages = json.data;
+      resultCount.textContent = pages.length;
+      resultsBody.innerHTML = '';
+
+      const baseName = selectedFile.name.replace(/\.pdf$/i, '');
+      const currentModel = modelSelect.value;
+
+      pages.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + p.pageNumber + '</td>' +
+          '<td>' + escapeHtml(p.pdfFileName) + '</td>' +
+          '<td>' + escapeHtml(p.jsonFileName) + '</td>' +
+          '<td class="file-size">' + formatSize(p.jsonFileSize) + '</td>' +
+          '<td>' +
+            '<a class="download-btn" data-type="pdf" data-dir="' + encodeURIComponent(baseName) + '" data-page="' + p.pageNumber + '">PDF</a>' +
+            '<a class="download-btn" data-type="json" data-dir="' + encodeURIComponent(baseName) + '" data-page="' + p.pageNumber + '" data-model="' + encodeURIComponent(currentModel) + '">JSON</a>' +
+          '</td>';
+        resultsBody.appendChild(tr);
+      });
+
+      resultsCard.style.display = 'block';
+
+      resultsBody.addEventListener('click', e => {
+        if (!e.target.classList.contains('download-btn')) return;
+        const type = e.target.dataset.type;
+        const dir = e.target.dataset.dir;
+        const pageNum = e.target.dataset.page;
+        if (type === 'pdf') {
+          downloadFile(API_BASE + '/download?dir=' + dir + '&page=' + pageNum);
+        } else {
+          const model = e.target.dataset.model;
+          downloadFile(API_BASE + '/download-json?dir=' + dir + '&page=' + pageNum + '&model=' + model);
+        }
+      });
+
+    } catch (err) {
+      showError('网络错误: ' + err.message);
+    } finally {
+      clearInterval(progressBar._interval);
+      ocrBtn.disabled = false;
+      spinner.style.display = 'none';
+      setTimeout(() => {
+        progressWrap.style.display = 'none';
+        progressBar.style.width = '0%';
+      }, 1000);
+    }
+  });
+
+  function downloadFile(url) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+})();
+</script>
+
+</body>
+</html>
