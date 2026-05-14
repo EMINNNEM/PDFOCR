@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF 元器件分析</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f0f2f5; color: #333; min-height: 100vh;
+    display: flex; justify-content: center; padding: 40px 16px;
+  }
+  .container { width: 100%; max-width: 960px; }
+  .card {
+    background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 28px; margin-bottom: 20px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  .subtitle { font-size: 13px; color: #999; margin-bottom: 20px; }
+
+  .upload-area {
+    border: 2px dashed #d9d9d9; border-radius: 8px; padding: 32px 20px;
+    text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+  }
+  .upload-area:hover, .upload-area.dragover { border-color: #1890ff; background: #e6f7ff; }
+  .upload-area .icon { font-size: 36px; margin-bottom: 8px; }
+  .upload-area .hint { color: #999; font-size: 14px; }
+  .upload-area .hint strong { color: #1890ff; }
+  #fileInput { display: none; }
+
+  .file-info {
+    display: none; margin-top: 14px; padding: 10px 14px;
+    background: #fafafa; border-radius: 4px; font-size: 14px;
+  }
+  .controls { margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .mode-select {
+    flex: 1; min-width: 200px; padding: 9px 12px; font-size: 14px;
+    border: 1px solid #d9d9d9; border-radius: 4px; background: #fff;
+  }
+  .btn {
+    padding: 9px 20px; font-size: 14px; border: none; border-radius: 4px;
+    cursor: pointer; transition: opacity 0.2s; white-space: nowrap;
+  }
+  .btn-primary { background: #1890ff; color: #fff; }
+  .btn-primary:hover { background: #40a9ff; }
+  .btn-primary:disabled { background: #91caff; cursor: not-allowed; }
+  .btn-danger { background: #ff4d4f; color: #fff; }
+  .btn-danger:hover { background: #ff7875; }
+
+  #progressWrap { display: none; margin-top: 16px; }
+  .progress-bar-wrap { height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+  .progress-bar-inner { height: 100%; background: #1890ff; border-radius: 3px; transition: width 0.4s; width: 0; }
+  .progress-text { font-size: 13px; color: #666; }
+
+  .error-msg {
+    display: none; margin-top: 14px; padding: 10px 14px;
+    background: #fff2f0; border: 1px solid #ffccc7; border-radius: 4px;
+    color: #ff4d4f; font-size: 14px;
+  }
+
+  #statusCards { display: none; margin-top: 16px; }
+  .page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .page-card {
+    border: 1px solid #f0f0f0; border-radius: 6px; padding: 12px; background: #fafafa;
+    transition: border-color 0.2s;
+  }
+  .page-card.pending { background: #fafafa; border-color: #e8e8e8; }
+  .page-card.processing { background: #e6f7ff; border-color: #91d5ff; }
+  .page-card.done { background: #f6ffed; border-color: #b7eb8f; }
+  .page-card.failed { background: #fff2f0; border-color: #ffccc7; }
+
+  .page-card .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .page-card .page-num { font-size: 14px; font-weight: 500; }
+  .page-card .page-status { font-size: 12px; }
+  .status-pending { color: #999; }
+  .status-processing { color: #1890ff; }
+  .status-done { color: #52c41a; }
+  .status-failed { color: #ff4d4f; }
+
+  .page-card .comp-list { font-size: 13px; color: #555; max-height: 120px; overflow-y: auto; }
+  .page-card .comp-list span { display: inline-block; background: #f0f0f0; padding: 1px 6px; border-radius: 3px; margin: 2px; font-size: 12px; }
+  .page-card .retry-area { margin-top: 8px; text-align: right; }
+  .spinner-inline {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid #d9d9d9; border-top-color: #1890ff; border-radius: 50%;
+    animation: spin 0.6s linear infinite; margin-right: 4px; vertical-align: -2px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .results { display: none; }
+  .results h3 { font-size: 16px; margin-bottom: 10px; }
+  .search-box {
+    width: 100%; padding: 8px 12px; font-size: 14px;
+    border: 1px solid #d9d9d9; border-radius: 4px; margin-bottom: 12px;
+  }
+  .search-box:focus { outline: none; border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,0.1); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>PDF 元器件智能分析</h1>
+    <p class="subtitle">多线程并发 + 实时进度 + 超时重试 + 失败恢复</p>
+
+    <div class="upload-area" id="uploadArea">
+      <div class="icon">🤖</div>
+      <p class="hint">点击或拖拽 <strong>PDF 文件</strong> 到此处</p>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf">
+
+    <div class="file-info" id="fileInfo">
+      <span id="fileName" style="word-break:break-all"></span>
+      <span style="color:#999;margin-left:12px" id="fileSize"></span>
+    </div>
+
+    <div class="controls">
+      <select class="mode-select" id="modeSelect">
+        <option value="pipeline">完整流程：拆分 → PNG → AI（推荐）</option>
+        <option value="pages">拆分后直接发 PDF 到 AI</option>
+        <option value="full">整个 PDF 一次发到 AI</option>
+      </select>
+      <button class="btn btn-primary" id="analyzeBtn" disabled>开始分析</button>
+    </div>
+
+    <div id="progressWrap">
+      <div class="progress-bar-wrap"><div class="progress-bar-inner" id="progressBar"></div></div>
+      <div class="progress-text" id="progressText">准备中...</div>
+    </div>
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <div id="statusCards">
+    <h3 style="font-size:15px;margin-bottom:10px">📋 页面处理状态</h3>
+    <div class="page-grid" id="pageGrid"></div>
+  </div>
+
+  <div class="card results" id="resultsCard">
+    <h3>📊 汇总结果 — <span id="resultSummary"></span></h3>
+    <input type="text" class="search-box" id="searchBox" placeholder="搜索过滤元器件..." style="display:none">
+    <div id="resultsContent"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const API_BASE = 'http://localhost:8080/api/pdf';
+  const $ = s => document.querySelector(s);
+
+  let selectedFile = null;
+  let allPageResults = {};   // pageNum -> {status, components, imageName, error}
+  let baseName = '';
+  let currentMode = 'pipeline';
+  let totalPages = 0;
+
+  const uploadArea = $('#uploadArea'); const fileInput = $('#fileInput');
+  const fileInfo = $('#fileInfo'); const fileNameEl = $('#fileName');
+  const fileSizeEl = $('#fileSize'); const modeSelect = $('#modeSelect');
+  const analyzeBtn = $('#analyzeBtn'); const progressWrap = $('#progressWrap');
+  const progressBar = $('#progressBar'); const progressText = $('#progressText');
+  const errorMsg = $('#errorMsg'); const statusCards = $('#statusCards');
+  const pageGrid = $('#pageGrid'); const resultsCard = $('#resultsCard');
+  const resultSummary = $('#resultSummary'); const searchBox = $('#searchBox');
+  const resultsContent = $('#resultsContent');
+
+  function formatSize(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+    return (b/1048576).toFixed(1) + ' MB';
+  }
+
+  function selectFile(file) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) { showError('只支持 PDF'); return; }
+    selectedFile = file;
+    fileNameEl.textContent = file.name; fileSizeEl.textContent = formatSize(file.size);
+    fileInfo.style.display = 'block'; analyzeBtn.disabled = false; hideError();
+    statusCards.style.display = 'none'; resultsCard.style.display = 'none';
+  }
+
+  function showError(m) { errorMsg.textContent = m; errorMsg.style.display = 'block'; }
+  function hideError() { errorMsg.style.display = 'none'; }
+
+  uploadArea.addEventListener('click', () => fileInput.click());
+  uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+  uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+  uploadArea.addEventListener('drop', e => {
+    e.preventDefault(); uploadArea.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) selectFile(fileInput.files[0]); });
+
+  analyzeBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    analyzeBtn.disabled = true; hideError();
+    allPageResults = {}; totalPages = 0; baseName = '';
+    currentMode = modeSelect.value;
+    pageGrid.innerHTML = '';
+    statusCards.style.display = 'block';
+    resultsCard.style.display = 'none';
+    progressWrap.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressText.textContent = '准备中...';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('mode', currentMode);
+
+      const res = await fetch(API_BASE + '/analyze-async', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const err = await res.json();
+        showError(err.message || '请求失败'); analyzeBtn.disabled = false; return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        let eventType = '';
+        let eventData = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) eventType = line.slice(6).trim();
+          else if (line.startsWith('data:')) {
+            eventData = line.slice(5).trim();
+            if (eventType && eventData) {
+              handleSSE(eventType, eventData);
+              eventType = ''; eventData = '';
+            }
+          }
+        }
+      }
+    } catch (err) {
+      showError('网络错误: ' + err.message);
+    } finally {
+      analyzeBtn.disabled = false;
+    }
+  });
+
+  function handleSSE(event, dataStr) {
+    try {
+      const data = JSON.parse(dataStr);
+
+      if (event === 'stage') {
+        progressText.textContent = data.message || data.stage;
+        if (data.stage === 'split') progressBar.style.width = '10%';
+        else if (data.stage === 'convert') progressBar.style.width = '25%';
+        else if (data.stage === 'analyze') progressBar.style.width = '35%';
+      }
+      else if (event === 'page') {
+        const pn = data.pageNumber;
+        allPageResults[pn] = {
+          status: data.status,
+          imageName: data.imageFileName || '',
+          components: data.components || [],
+          error: data.error || ''
+        };
+        renderCard(pn);
+
+        // Update progress bar based on completed pages
+        if (totalPages > 0) {
+          const done = Object.values(allPageResults).filter(r => r.status === 'done').length;
+          const processed = Object.values(allPageResults).filter(r => r.status !== 'pending').length;
+          progressBar.style.width = (35 + (processed / totalPages) * 60) + '%';
+          progressText.textContent = `AI 分析中：${processed}/${totalPages} 页（${done} 已完成）`;
+        }
+      }
+      else if (event === 'done') {
+        totalPages = data.totalPages;
+        baseName = data.baseName || '';
+        progressBar.style.width = '100%';
+        const failed = data.failedPages || [];
+        progressText.textContent = failed.length > 0
+          ? `完成：${data.successPages}/${data.totalPages} 成功，${failed.length} 失败`
+          : `全部完成！${data.successPages} 页` + (data.data ? '，共 ' + data.data.reduce((s,r) => s + (r.components||[]).length, 0) + ' 个元器件' : '');
+
+        // Store ordered results if available
+        if (data.data) {
+          data.data.forEach(r => {
+            if (!allPageResults[r.pageNumber] || allPageResults[r.pageNumber].status !== 'done') {
+              allPageResults[r.pageNumber] = { status: 'done', imageName: r.imageFileName || '', components: r.components || [], error: '' };
+            }
+          });
+        }
+
+        renderResults();
+      }
+      else if (event === 'error') {
+        showError(data.message || '分析失败');
+      }
+    } catch (e) {
+      console.error('SSE parse error:', e, dataStr);
+    }
+  }
+
+  function renderCard(pageNum) {
+    const r = allPageResults[pageNum];
+    let existing = pageGrid.querySelector(`[data-page="${pageNum}"]`);
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.className = 'page-card';
+      existing.dataset.page = pageNum;
+      pageGrid.appendChild(existing);
+    }
+
+    existing.className = 'page-card ' + r.status;
+    const statusLabel = { pending: '⏳ 等待', processing: '🔄 处理中', done: '✅ 完成', failed: '❌ 失败' };
+    const statusClass = 'status-' + r.status;
+    const compCount = r.components ? r.components.length : 0;
+
+    let html = '<div class="page-header">' +
+      '<span class="page-num">第 ' + pageNum + ' 页</span>' +
+      '<span class="page-status ' + statusClass + '">' + (statusLabel[r.status] || r.status) + '</span>' +
+      '</div>';
+
+    if (r.status === 'done') {
+      html += '<div class="comp-list">';
+      r.components.slice(0, 15).forEach(c => { html += '<span>' + esc(c) + '</span>'; });
+      if (r.components.length > 15) html += ' <span>+' + (r.components.length - 15) + ' more</span>';
+      html += '</div>';
+    } else if (r.status === 'processing') {
+      html += '<div style="font-size:13px;color:#1890ff"><span class="spinner-inline"></span>AI 正在识别...</div>';
+    } else if (r.status === 'failed') {
+      html += '<div style="font-size:12px;color:#ff4d4f;margin:4px 0">' + esc(r.error || '未知错误') + '</div>';
+      html += '<div class="retry-area"><button class="btn btn-danger" onclick="retryPage(' + pageNum + ')" style="font-size:12px;padding:4px 12px">🔄 重试</button></div>';
+    }
+
+    existing.innerHTML = html;
+  }
+
+  window.retryPage = async function(pageNum) {
+    const card = pageGrid.querySelector(`[data-page="${pageNum}"]`);
+    if (!card || !baseName) return;
+    allPageResults[pageNum] = { status: 'processing', components: [], error: '' };
+    card.className = 'page-card processing';
+    card.innerHTML = '<div class="page-header"><span class="page-num">第 ' + pageNum + ' 页</span><span class="page-status status-processing">🔄 重试中</span></div><div style="font-size:13px;color:#1890ff"><span class="spinner-inline"></span>重新发送...</div>';
+
+    try {
+      // Retry with the page PDF from the server
+      const formData = new FormData();
+      formData.append('mode', currentMode);
+      formData.append('baseName', baseName);
+      formData.append('pageNumber', pageNum);
+
+      // Fetch the page file from server
+      const ext = currentMode === 'pipeline' ? 'png' : 'pdf';
+      const fileUrl = API_BASE + '/download-image?dir=' + encodeURIComponent(baseName) + '&page=' + pageNum;
+      const fileResp = await fetch(fileUrl);
+      const blob = await fileResp.blob();
+      const file = new File([blob], baseName + '-' + pageNum + '.' + ext, { type: 'image/png' });
+      formData.append('file', file);
+
+      const res = await fetch(API_BASE + '/retry-page', { method: 'POST', body: formData });
+      const json = await res.json();
+
+      if (json.code === 200) {
+        allPageResults[pageNum] = { status: 'done', imageName: json.data.imageFileName || '', components: json.data.components || [], error: '' };
+      } else {
+        allPageResults[pageNum] = { status: 'failed', components: [], error: json.message || '重试失败' };
+      }
+    } catch (e) {
+      allPageResults[pageNum] = { status: 'failed', components: [], error: e.message };
+    }
+    renderCard(pageNum);
+    updateResultsSummary();
+  };
+
+  function renderResults() {
+    resultsCard.style.display = 'block';
+    updateResultsSummary();
+    searchBox.style.display = Object.values(allPageResults).some(r => r.status === 'done') ? 'block' : 'none';
+    displayAllResults();
+  }
+
+  function updateResultsSummary() {
+    const all = Object.values(allPageResults);
+    const done = all.filter(r => r.status === 'done').length;
+    const failed = all.filter(r => r.status === 'failed').length;
+    const total = all.reduce((s, r) => s + (r.components ? r.components.length : 0), 0);
+    let txt = done + '/' + all.length + ' 页成功';
+    if (failed > 0) txt += '，' + failed + ' 页失败';
+    txt += '，共 ' + total + ' 个元器件';
+    resultSummary.textContent = txt;
+  }
+
+  function displayAllResults(filter) {
+    let html = '';
+    const donePages = Object.entries(allPageResults).filter(([_, r]) => r.status === 'done').sort((a, b) => +a[0] - +b[0]);
+    donePages.forEach(([pn, r]) => {
+      let comps = r.components || [];
+      if (filter) comps = comps.filter(c => c.toLowerCase().includes(filter.toLowerCase()));
+      html += '<details open style="margin-bottom:10px"><summary style="cursor:pointer;font-weight:500;font-size:14px">第 ' + pn + ' 页 — ' + r.components.length + ' 个元器件</summary>';
+      if (comps.length === 0) {
+        html += '<div style="color:#999;padding:8px;font-size:13px">无匹配结果</div>';
+      } else {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">';
+        comps.forEach(c => { html += '<span style="background:#f0f0f0;padding:2px 8px;border-radius:3px;font-size:13px">' + esc(c) + '</span>'; });
+        html += '</div>';
+      }
+      html += '</details>';
+    });
+    resultsContent.innerHTML = html || '<div style="color:#999;text-align:center;padding:20px">暂无结果</div>';
+  }
+
+  searchBox.addEventListener('input', () => displayAllResults(searchBox.value));
+
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+})();
+</script>
+</body>
+</html>

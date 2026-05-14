@@ -1,0 +1,18 @@
+package org.caizx.pdfocr.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ComponentExtractionResult {
+
+    private String imageFileName;
+    private String jsonFileName;
+    private long jsonFileSize;
+    private List<String> components;
+}

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>元器件提取</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f0f2f5; color: #333; min-height: 100vh;
+    display: flex; justify-content: center; padding: 40px 16px;
+  }
+  .container { width: 100%; max-width: 800px; }
+  .card {
+    background: #fff; border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 32px; margin-bottom: 24px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 8px; color: #1a1a1a; }
+  .subtitle { font-size: 13px; color: #999; margin-bottom: 24px; }
+  .upload-area {
+    border: 2px dashed #d9d9d9; border-radius: 8px; padding: 40px 20px;
+    text-align: center; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .upload-area:hover, .upload-area.dragover { border-color: #1890ff; background: #e6f7ff; }
+  .upload-area .icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-area .hint { color: #999; font-size: 14px; }
+  .upload-area .hint strong { color: #1890ff; }
+  #fileInput { display: none; }
+  .image-preview {
+    display: none; margin-top: 16px; text-align: center;
+  }
+  .image-preview img { max-width: 100%; max-height: 300px; border-radius: 4px; border: 1px solid #eee; }
+  .image-preview .name { display: block; margin-top: 8px; font-size: 13px; color: #666; }
+  .btn {
+    display: block; width: 100%; margin-top: 16px; padding: 10px 0;
+    font-size: 15px; border: none; border-radius: 4px; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn-primary { background: #1890ff; color: #fff; }
+  .btn-primary:hover { background: #40a9ff; }
+  .btn-primary:disabled { background: #91caff; cursor: not-allowed; }
+  .spinner {
+    display: none; text-align: center; margin-top: 16px; color: #999; font-size: 14px;
+  }
+  .spinner::before {
+    content: ""; display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #d9d9d9; border-top-color: #1890ff; border-radius: 50%;
+    animation: spin 0.6s linear infinite; margin-right: 8px; vertical-align: -2px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-msg {
+    display: none; margin-top: 16px; padding: 10px 16px;
+    background: #fff2f0; border: 1px solid #ffccc7; border-radius: 4px;
+    color: #ff4d4f; font-size: 14px;
+  }
+  .results { display: none; }
+  .results-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+  .results h2 { font-size: 16px; font-weight: 500; color: #1a1a1a; }
+  .results .count { font-size: 13px; color: #999; }
+  .search-box {
+    width: 100%; padding: 8px 12px; font-size: 14px;
+    border: 1px solid #d9d9d9; border-radius: 4px; margin-bottom: 12px;
+  }
+  .search-box:focus { outline: none; border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,0.1); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; padding: 8px 12px; background: #fafafa; border-bottom: 1px solid #f0f0f0; color: #666; font-weight: 500; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+  tr:hover td { background: #fafafa; }
+  .index { width: 60px; color: #999; }
+  .empty-msg {
+    text-align: center; padding: 40px; color: #999; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <h1>元器件提取</h1>
+    <p class="subtitle">上传线束图 PNG 图片，AI 自动识别并提取元器件名称</p>
+
+    <div class="upload-area" id="uploadArea">
+      <div class="icon">🔍</div>
+      <p class="hint">点击或拖拽 <strong>PNG 图片</strong> 到此处</p>
+    </div>
+    <input type="file" id="fileInput" accept=".png,.jpg,.jpeg">
+
+    <div class="image-preview" id="imagePreview">
+      <img id="previewImg" src="" alt="预览">
+      <span class="name" id="previewName"></span>
+    </div>
+
+    <button class="btn btn-primary" id="extractBtn" disabled>提取元器件</button>
+    <div class="spinner" id="spinner">AI 正在分析图片，请耐心等待...</div>
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <div class="card results" id="resultsCard">
+    <div class="results-header">
+      <h2>提取结果</h2>
+      <span class="count">共 <strong id="resultCount">0</strong> 个元器件</span>
+    </div>
+    <input type="text" class="search-box" id="searchBox" placeholder="搜索过滤元器件...">
+    <table>
+      <thead>
+        <tr><th class="index">#</th><th>元器件名称</th></tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+    <div class="empty-msg" id="emptyMsg" style="display:none">未找到匹配的元器件</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const API_BASE = 'http://localhost:8080/api/pdf';
+
+  const $ = s => document.querySelector(s);
+  const uploadArea = $('#uploadArea');
+  const fileInput = $('#fileInput');
+  const imagePreview = $('#imagePreview');
+  const previewImg = $('#previewImg');
+  const previewName = $('#previewName');
+  const extractBtn = $('#extractBtn');
+  const spinner = $('#spinner');
+  const errorMsg = $('#errorMsg');
+  const resultsCard = $('#resultsCard');
+  const resultCount = $('#resultCount');
+  const resultsBody = $('#resultsBody');
+  const searchBox = $('#searchBox');
+  const emptyMsg = $('#emptyMsg');
+
+  let selectedFile = null;
+  let allComponents = [];
+
+  function selectFile(file) {
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith('.png') && !lower.endsWith('.jpg') && !lower.endsWith('.jpeg')) {
+      showError('只支持 PNG/JPG 图片文件'); return;
+    }
+    selectedFile = file;
+    previewName.textContent = file.name;
+
+    const reader = new FileReader();
+    reader.onload = e => { previewImg.src = e.target.result; imagePreview.style.display = 'block'; };
+    reader.readAsDataURL(file);
+
+    extractBtn.disabled = false;
+    hideError();
+    resultsCard.style.display = 'none';
+  }
+
+  function showError(msg) { errorMsg.textContent = msg; errorMsg.style.display = 'block'; }
+  function hideError() { errorMsg.style.display = 'none'; }
+
+  uploadArea.addEventListener('click', () => fileInput.click());
+  uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+  uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+  uploadArea.addEventListener('drop', e => {
+    e.preventDefault(); uploadArea.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) selectFile(fileInput.files[0]); });
+
+  extractBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    extractBtn.disabled = true;
+    spinner.style.display = 'block';
+    hideError();
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const res = await fetch(API_BASE + '/extract-components', { method: 'POST', body: formData });
+      const json = await res.json();
+
+      if (json.code !== 200) { showError(json.message || '提取失败'); return; }
+
+      allComponents = json.data.components || [];
+      renderTable(allComponents);
+      resultsCard.style.display = 'block';
+    } catch (err) {
+      showError('网络错误: ' + err.message);
+    } finally {
+      extractBtn.disabled = false;
+      spinner.style.display = 'none';
+    }
+  });
+
+  searchBox.addEventListener('input', () => {
+    const q = searchBox.value.toLowerCase();
+    const filtered = allComponents.filter(c => c.toLowerCase().includes(q));
+    renderTable(filtered);
+  });
+
+  function renderTable(components) {
+    resultCount.textContent = allComponents.length;
+    resultsBody.innerHTML = '';
+
+    if (components.length === 0) {
+      emptyMsg.style.display = 'block';
+    } else {
+      emptyMsg.style.display = 'none';
+    }
+
+    components.forEach((name, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td class="index">' + (i + 1) + '</td><td>' + escapeHtml(name) + '</td>';
+      resultsBody.appendChild(tr);
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+})();
+</script>
+
+</body>
+</html>

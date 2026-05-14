@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: PDFOCR
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+  ai:
+    openai:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: sk-1df8d2732b804f51a2f0cfc6ecc2bfc6
+      chat:
+        options:
+          model: ${AI_MODEL:qwen3.6-plus}
+          temperature: 0.1
+#    openai:
+#      base-url: https://api.deepseek.com
+#      api-key: sk-2610ec608e4a43fc8ef3c028fb492f70
+#      chat:
+#        options:
+#          model: ${AI_MODEL:deepseek-v4-pro}
+#          temperature: 0.1
+
+pdf:
+  upload-dir: ./uploads
+  image:
+    dpi: 200
+  analysis:
+    threads: 3
+    timeout-seconds: 120
+
+paddleocr:
+  service:
+    url: http://localhost:5000/ocr
+  token: 4c4b38d0a4840c156758662525232b781fab6335
+  models:
+    pp-ocrv5: PP-OCRv5
+    pp-structurev3: PP-StructureV3
+  optional:
+    useDocOrientationClassify: true
+    useDocUnwarping: false
+    useTextlineOrientation: true
+    textDetLimitSideLen: 960
+    textDetLimitType: max
+    textDetThresh: 0.2
+    textDetBoxThresh: 0.5
+    textDetUnclipRatio: 2.0
+    textRecScoreThresh: 0.3
