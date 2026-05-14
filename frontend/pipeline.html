@@ -368,14 +368,16 @@
     } catch (e) {
       allPageResults[pageNum] = { status: 'failed', components: [], error: e.message };
     }
+
+    // ── Sync all UI elements after retry ──
     renderCard(pageNum);
     updateResultsSummary();
+    syncProgressBar();
+    displayAllResults(searchBox.value);
   };
 
   function renderResults() {
-    resultsCard.style.display = 'block';
     updateResultsSummary();
-    searchBox.style.display = Object.values(allPageResults).some(r => r.status === 'done') ? 'block' : 'none';
     displayAllResults();
   }
 
@@ -388,6 +390,27 @@
     if (failed > 0) txt += '，' + failed + ' 页失败';
     txt += '，共 ' + total + ' 个元器件';
     resultSummary.textContent = txt;
+    // Show search box if any page has components
+    searchBox.style.display = total > 0 ? 'block' : 'none';
+    // Show results card if at least one page is done
+    resultsCard.style.display = done > 0 ? 'block' : 'none';
+  }
+
+  function syncProgressBar() {
+    if (totalPages <= 0) return;
+    const all = Object.values(allPageResults);
+    const done = all.filter(r => r.status === 'done').length;
+    const failed = all.filter(r => r.status === 'failed').length;
+    const processed = done + failed;
+    progressBar.style.width = (35 + (processed / totalPages) * 65) + '%';
+    if (processed >= totalPages) {
+      progressBar.style.width = '100%';
+      progressText.textContent = failed > 0
+        ? `完成：${done}/${totalPages} 成功，${failed} 失败`
+        : `全部完成！${done} 页成功`;
+    } else {
+      progressText.textContent = `AI 分析中：${processed}/${totalPages} 页（${done} 已完成）`;
+    }
   }
 
   function displayAllResults(filter) {
