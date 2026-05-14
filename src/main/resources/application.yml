@@ -15,7 +15,7 @@ spring:
       api-key: sk-1df8d2732b804f51a2f0cfc6ecc2bfc6
       chat:
         options:
-          model: ${AI_MODEL:qwen3.6-plus}
+          model: ${AI_MODEL:qwen3.6-flash}
           temperature: 0.1
 #    openai:
 #      base-url: https://api.deepseek.com
